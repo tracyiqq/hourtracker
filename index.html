@@ -24,22 +24,31 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   touch-action:manipulation}          /* no double-tap zoom; pan and pinch still work */
 button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-html,body{margin:0;padding:0;height:100%}
-body{font-family:var(--display);font-size:15px;color:var(--ink);background:var(--paper);
-  -webkit-font-smoothing:antialiased;overflow:hidden;width:100%;height:100%}
+html,body{margin:0;padding:0;height:100%;background:#fff}
+/* iOS reports several different "full heights" in a standalone app; take the
+   largest available so nothing is left over at the bottom */
+html{height:-webkit-fill-available}
+body{font-family:var(--display);font-size:15px;color:var(--ink);background:#fff;
+  -webkit-font-smoothing:antialiased;overflow:hidden;width:100%;
+  height:100%;min-height:-webkit-fill-available;
+  padding:0;overscroll-behavior:none}
 /* fixed inset beats any height unit: no dvh rounding, no gap under the tab bar */
-#app{position:fixed;inset:0;width:100%;height:100%;background:var(--paper);
-  display:flex;flex-direction:column;overflow:hidden}
+#app{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;background:var(--paper);
+  display:flex;flex-direction:column;overflow:hidden;
+  height:100%;height:-webkit-fill-available;height:100dvh}
 /* the phone frame is a desktop-preview affordance only */
-@media (min-width:560px) and (min-height:640px){
+@media (min-width:560px) and (min-height:640px) and (hover:hover) and (pointer:fine){
   body{background:#20252F;display:flex;align-items:center;justify-content:center}
   #app{position:relative;inset:auto;width:100%;max-width:412px;height:min(100dvh,880px);
     border-radius:34px;box-shadow:0 30px 70px -20px rgba(0,0,0,.6)}
 }
 /* installed to the Home Screen: never a frame, always edge to edge */
 @media (display-mode:standalone),(display-mode:fullscreen){
-  body{background:var(--paper);display:block}
-  #app{position:fixed;inset:0;width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
+  html,body{background:#fff}
+  body{display:block}
+  #app{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;max-width:none;
+    height:100%;height:-webkit-fill-available;height:100dvh;
+    border-radius:0;box-shadow:none}
 }
 
 .topbar{flex:none;background:var(--ink);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 14px 14px;
@@ -154,9 +163,12 @@ input:focus,select:focus,button:focus-visible{outline:2px solid var(--marigold);
 .state.unsaved{background:#FCF6EA;color:#6B5424;border:1px solid #EBD9B4}
 .state.stored{background:#E7F4EC;color:#0B5132;border:1px solid #A9D5C9}
 
-.tabs{flex:none;display:flex;background:#fff;backdrop-filter:blur(12px);
+.tabs{flex:none;display:flex;background:#fff;position:relative;z-index:2;
   border-top:1px solid var(--rule-soft);
   padding-bottom:max(env(safe-area-inset-bottom),6px)}
+/* belt and braces: an explicit fixed layer over the bottom inset */
+.safebottom{position:fixed;left:0;right:0;bottom:0;z-index:1;pointer-events:none;
+  height:max(env(safe-area-inset-bottom),0px);background:#fff}
 .tabs button{flex:1;border:0;background:transparent;padding:9px 2px 8px;cursor:pointer;color:var(--ink-3);
   display:flex;flex-direction:column;align-items:center;gap:3px;height:var(--tabh)}
 .tabs button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -268,6 +280,7 @@ textarea.csvbox{width:100%;font-family:var(--mono);font-size:11px;line-height:1.
     <button data-tab="hist"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>History</span></button>
   </div>
 
+  <div class="safebottom" aria-hidden="true"></div>
   <div class="scrim" id="scrim"></div>
   <div class="sheet" id="sheet"></div>
   <div class="full" id="settings"></div>

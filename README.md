@@ -362,6 +362,16 @@ Everything is stored in local browser storage under the `hoursledger:` prefix. T
 
 ---
 
+## Installing to the iPhone Home Screen
+
+Safari → Share → **Add to Home Screen**. It then launches full screen with no browser chrome.
+
+**If you have added it before, delete the old icon first.** iOS caches the page behind a Home
+Screen icon aggressively, and will keep serving the version it captured when the icon was created
+— so layout fixes appear not to work until the icon is recreated.
+
+---
+
 ## Hosting
 
 The repository is deployment-ready: `index.html` sits at the root with no build step, no
@@ -396,7 +406,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
-| Fixed: grey bar below the interface on iPhone | the phone-frame preview capped the app at 880px, shorter than a Pro Max viewport (932px); full-bleed is now the default and the frame only appears on large screens |
+| Fixed: grey bar below the interface on iPhone | the phone-frame preview capped the app at 880px, shorter than a Pro Max viewport (932px). Full-bleed is now the default; the frame is confined to pointer devices; the page backdrop matches the tab bar and the home-indicator inset is painted explicitly |
 | Closing the app always requires the passcode | the grace window is session-scoped, so a suspend or reload is forgiven but a close is not |
 | Fixed: grace window had no effect on existing installs | the old build persisted `grace: 0`, which was then read back as a deliberate choice; a stored value now only counts if it was chosen in Settings |
 | 10-minute grace window | brief app switches no longer ask for the passcode; grace measured by timestamp because iOS suspends background timers |
