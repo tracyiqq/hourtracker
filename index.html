@@ -378,12 +378,28 @@ let unlocking = null;       // in-flight prompt, so two events cannot stack two 
  *  iOS suspends timers the moment a page is backgrounded, so a setTimeout
  *  scheduled on hide simply never fires — which is why the passcode was
  *  being demanded after a one-second trip to another app. */
+let seenMem = 0;      // survives a resume-from-memory even if no write landed
+const SEEN_KEY = 'hoursledger:seen';
+function lastSeen(){ return Math.max(seenMem, Number(LOCK.seen)||0); }
 function graceActive(){
-  return LOCK.enabled && LOCK.grace>0 && LOCK.seen &&
-         (Date.now()-Number(LOCK.seen)) < LOCK.grace*1000;
+  if(!LOCK.enabled || !(LOCK.grace>0)) return false;
+  const t=lastSeen();
+  return !!t && (Date.now()-t) < LOCK.grace*1000;
 }
-function markSeen(){ LOCK.seen=Date.now(); sSet('lock',LOCK); }
-function clearSeen(){ LOCK.seen=0; sSet('lock',LOCK); }
+/** Stamp the moment of leaving. The synchronous localStorage write matters:
+ *  a page being backgrounded may be frozen before an async write completes,
+ *  which would lose the timestamp and demand the passcode on return. */
+function markSeen(){
+  seenMem = Date.now();
+  LOCK.seen = seenMem;
+  try{ localStorage.setItem(SEEN_KEY, String(seenMem)); }catch(e){}
+  sSet('lock',LOCK);
+}
+function clearSeen(){
+  seenMem = 0; LOCK.seen = 0;
+  try{ localStorage.removeItem(SEEN_KEY); }catch(e){}
+  sSet('lock',LOCK);
+}
 
 function drawDots(n){
   const d=$('dots'); d.innerHTML='';
@@ -1329,6 +1345,11 @@ function openSettings(){
   pc.appendChild(setBtn);
   const gf=el('div','field'); gf.style.margin='12px 0 0';
   gf.appendChild(el('label',null,'Ask for the passcode'));
+  const gnow=el('p','sub'); gnow.style.margin='0 0 6px';
+  gnow.textContent = LOCK.grace>0
+    ? `Currently: only after ${LOCK.grace>=3600?(LOCK.grace/3600)+' hour':(LOCK.grace/60)+' minute'}${(LOCK.grace/60)>1&&LOCK.grace<3600?'s':''} away`
+    : 'Currently: every single time';
+  gf.appendChild(gnow);
   const gsel=el('select');
   gsel.innerHTML='<option value="0">Every time the page is opened</option>'
     +'<option value="60">If away more than 1 minute</option>'
@@ -1338,7 +1359,8 @@ function openSettings(){
     +'<option value="7200">If away more than 2 hours</option>';
   gsel.value=String(Number(LOCK.grace)||0);
   gsel.onchange=async()=>{
-    LOCK.grace=Number(gsel.value)||0; LOCK.seen=Date.now(); await sSet('lock',LOCK);
+    LOCK.grace=Number(gsel.value)||0; LOCK.graceSet=true;
+    seenMem=Date.now(); LOCK.seen=seenMem; await sSet('lock',LOCK);
     const m=LOCK.grace/60;
     toast(LOCK.grace?`Re-asks after ${m>=60?(m/60)+'h':m+' min'} away`:'Passcode every time');
   };
@@ -1379,10 +1401,14 @@ $('scrim').onclick=closeSheet;
 [...$('tabs').children].forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
 
 (async function init(){
+  try{ const sv=localStorage.getItem(SEEN_KEY); if(sv) seenMem=Number(sv)||0; }catch(e){}
   const lk=await sGet('lock');
   if(lk && typeof lk.enabled==='boolean'){
     LOCK.enabled=lk.enabled; LOCK.hash=lk.hash||DEFAULT_PASS_HASH;
-    LOCK.grace = (lk.grace===undefined||lk.grace===null) ? GRACE_DEFAULT : Number(lk.grace)||0;
+    // graceSet is only true once the person has picked a value themselves.
+    // Without it, any stored grace came from an older default and is ignored.
+    LOCK.grace = lk.graceSet ? (Number(lk.grace)||0) : GRACE_DEFAULT;
+    LOCK.graceSet = !!lk.graceSet;
     LOCK.tries=lk.tries; LOCK.until=lk.until; LOCK.seen=lk.seen;
   }
   // a reload inside the grace window should not ask again either
@@ -1432,6 +1458,8 @@ $('scrim').onclick=closeSheet;
     document.visibilityState==='hidden' ? leaving() : returning();
   });
   window.addEventListener('pagehide', leaving);            // navigating away, app suspending
+  window.addEventListener('blur', markSeen);               // focus lost before any hide fires
+  window.addEventListener('beforeunload', markSeen);
   window.addEventListener('pageshow', ()=>returning());    // includes back/forward cache restores
   window.addEventListener('freeze', leaving);              // browser discarding the tab
   window.addEventListener('resume', returning);

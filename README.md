@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Grace migration and durability | 11 / 11 — stale settings overridden, deliberate choices respected, resume-from-memory and reload paths both covered |
 | Grace window | 11 / 11 cases — 1s to 1h away against every setting, plus never-unlocked, lock-disabled and Lock-now |
 | Lock re-entry | 6 / 6 routes re-lock — fresh load, page hidden, pagehide, bfcache restore, freeze, and open panels dismissed |
 | Security regressions | 5 checks in the suite — no network calls, no third-party origins, CSP present, all escape points wrapped, no plaintext passcode |
@@ -296,8 +297,12 @@ the lock rather than your timesheet. Inside the grace window that veil simply li
 beyond it, the passcode is required.
 
 Grace is judged by **comparing timestamps on return, never by a timer** — iOS suspends timers as
-soon as a page is backgrounded, so a countdown scheduled on hide never fires. A reload inside the
-window is also honoured, since the last-seen time is persisted.
+soon as a page is backgrounded, so a countdown scheduled on hide never fires.
+
+The timestamp is held two ways, because either alone has a hole: in memory, which survives a
+resume even if no write completed, and in `localStorage` written **synchronously**, because a page
+being frozen may not finish an asynchronous write. A reload inside the window is honoured from the
+stored copy.
 
 A reload is not the only way back into a page: iOS resumes a Home Screen app from memory, and
 Safari restores from the back/forward cache — in both cases without re-running startup. So
@@ -389,6 +394,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Fixed: grace window had no effect on existing installs | the old build persisted `grace: 0`, which was then read back as a deliberate choice; a stored value now only counts if it was chosen in Settings |
 | 10-minute grace window | brief app switches no longer ask for the passcode; grace measured by timestamp because iOS suspends background timers |
 | Fixed: repeated digits in the passcode triggered iOS zoom | two quick taps on one key read as a double-tap gesture; `touch-action` now disables it app-wide and the keypad fires on `pointerdown` |
 | Fixed: Tue–Fri PM rate was clipped in Settings | the six-column rate row left 54px for a figure needing 52px; each rate is now a labelled field in a per-type card |
