@@ -377,6 +377,8 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Fixed: repeated digits in the passcode triggered iOS zoom | two quick taps on one key read as a double-tap gesture; `touch-action` now disables it app-wide and the keypad fires on `pointerdown` |
+| Fixed: Tue–Fri PM rate was clipped in Settings | the six-column rate row left 54px for a figure needing 52px; each rate is now a labelled field in a per-type card |
 | Fixed: passcode was only asked once | resuming the page from memory or the back/forward cache skipped the lock entirely; every re-entry route now re-locks, immediately on hide |
 | Security hardening | strict CSP, third-party fonts removed, all editable text escaped, brute-force backoff, auto-relock |
 | Passcode lock added | six-digit keypad on open; salted hash only, changeable or removable in Settings |

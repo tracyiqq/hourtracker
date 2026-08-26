@@ -21,7 +21,9 @@
   --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
   --tabh:60px;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}          /* no double-tap zoom; pan and pinch still work */
+button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html,body{margin:0;padding:0;height:100%}
 body{font-family:var(--display);font-size:15px;color:var(--ink);background:#20252F;
   -webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -182,6 +184,7 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;bac
   border:3px solid #fff;box-shadow:0 1px 5px rgba(20,26,36,.4)}
 input[type=range]:focus-visible{outline:2px solid var(--marigold);outline-offset:4px}
 .lock{position:absolute;inset:0;z-index:60;background:var(--ink);color:#fff;display:flex;
+  -webkit-user-select:none;user-select:none;
   flex-direction:column;align-items:center;justify-content:center;padding:24px;
   padding-top:calc(env(safe-area-inset-top) + 24px)}
 .lock.hide{display:none}
@@ -196,7 +199,8 @@ input[type=range]:focus-visible{outline:2px solid var(--marigold);outline-offset
 .lockmsg.bad{color:#FF8A7A}
 .pad{display:grid;grid-template-columns:repeat(3,78px);gap:14px;justify-content:center}
 .pad button{height:78px;border-radius:50%;border:1px solid #2E3746;background:#1C2331;color:#fff;
-  font-family:var(--mono);font-size:26px;font-weight:500;cursor:pointer}
+  font-family:var(--mono);font-size:26px;font-weight:500;cursor:pointer;
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .pad button:active{background:#2A3342}
 .pad button.wide{border:0;background:transparent;font-size:13px;font-family:var(--display);color:#8E99AD}
 .shake{animation:shk .38s}
@@ -211,13 +215,15 @@ textarea.csvbox{width:100%;font-family:var(--mono);font-size:11px;line-height:1.
 .pctwrap .bx input{text-align:right;font-family:var(--mono);font-size:17px;font-weight:600;padding:11px 10px}
 .pctscale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
   color:var(--ink-3);margin:-6px 2px 0}
-.ratehead,.raterow{display:grid;grid-template-columns:52px 1fr 1fr 1fr 1fr 26px;gap:5px;align-items:center}
-.ratehead div{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-3);text-align:center;line-height:1.2}
-.raterow{margin-bottom:6px}
-.raterow input{padding:9px 4px;font-size:14px;border-radius:9px}
-.raterow input.code{font-family:var(--mono);font-weight:600;text-align:center;padding:9px 2px}
-.raterow button{border:0;background:transparent;color:var(--ink-3);font-size:17px;cursor:pointer;padding:0}
+.ratecard{border:1px solid var(--rule-soft);border-radius:12px;padding:12px;margin-bottom:10px;background:#FBFCFD}
+.ratetop{display:flex;gap:9px;align-items:center;margin-bottom:11px}
+.ratetop input.code{flex:1;font-family:var(--mono);font-weight:600;font-size:15px;padding:10px 12px}
+.ratetop button{flex:none;width:34px;height:34px;border:1px solid var(--rule);background:var(--surface);
+  border-radius:9px;color:var(--ink-3);font-size:17px;line-height:1;cursor:pointer}
+.ratetop button:active{background:#F1F4F8}
+.rategrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.rategrid .field{margin:0}
+.rategrid input{padding:11px 10px;font-size:15px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -446,12 +452,23 @@ function unlock(){
         if(wait) tick();
       }
     };
+    /* pointerdown, not click: a click needs the browser to rule out a
+       double-tap gesture first, which is exactly what swallowed a repeated
+       digit. preventDefault stops the synthetic click that would follow. */
+    const tap=(node,fn)=>{
+      if(window.PointerEvent){
+        node.addEventListener('pointerdown',e=>{ e.preventDefault(); fn(); });
+      }else{
+        node.addEventListener('touchstart',e=>{ e.preventDefault(); fn(); },{passive:false});
+        node.addEventListener('click',fn);
+      }
+    };
     ['1','2','3','4','5','6','7','8','9'].forEach(n=>{
-      const b=el('button',null,n); b.onclick=()=>press(n); pad.appendChild(b);
+      const b=el('button',null,n); tap(b,()=>press(n)); pad.appendChild(b);
     });
     const del=el('button','wide','Delete');
-    del.onclick=()=>{ buf=buf.slice(0,-1); drawDots(buf.length); };
-    const zero=el('button',null,'0'); zero.onclick=()=>press('0');
+    tap(del,()=>{ buf=buf.slice(0,-1); drawDots(buf.length); });
+    const zero=el('button',null,'0'); tap(zero,()=>press('0'));
     pad.append(del,zero,el('button','wide',''));
     document.onkeydown=e=>{
       if(/^[0-9]$/.test(e.key)) press(e.key);
@@ -1187,20 +1204,33 @@ function openSettings(){
 
   sc.appendChild(el('p','eyebrow','Leave rates — hours deducted'));
   const rc=el('div','card');
-  const head=el('div','ratehead');
-  ['Type','Full','Mon AM','Mon PM','T–F AM','T–F PM',''].forEach(t=>head.appendChild(el('div',null,t)));
-  head.style.marginBottom='6px'; rc.appendChild(head);
   CFG.rates.forEach((r,i)=>{
-    const row=el('div','raterow');
+    const card=el('div','ratecard');
+    const top=el('div','ratetop');
     const code=el('input'); code.type='text'; code.value=r.code||''; code.className='code';
-    code.placeholder='—'; code.oninput=()=>{ CFG.rates[i].code=code.value; };
-    row.appendChild(code);
-    ['full','monAM','monPM','othAM','othPM'].forEach(k=>{
-      row.appendChild(numField(r[k],val=>{CFG.rates[i][k]=val;},{blankZero:k==='full',placeholder:k==='full'?'base':'0'}));
-    });
-    const x=el('button',null,'×');
+    code.placeholder='Leave type, e.g. AL';
+    code.setAttribute('aria-label','Leave type code');
+    code.oninput=()=>{ CFG.rates[i].code=code.value; };
+    const x=el('button',null,'\u00d7');
+    x.setAttribute('aria-label','Remove this leave type');
     x.onclick=()=>{ CFG.rates.splice(i,1); openSettings(); };
-    row.appendChild(x); rc.appendChild(row);
+    top.append(code,x); card.appendChild(top);
+
+    // Each rate gets its own labelled field — a six-column row cannot fit
+    // three-decimal figures on a phone without clipping.
+    const grid=el('div','rategrid');
+    [['full','Full day','base'],['monAM','Mon AM','0.000'],
+     ['monPM','Mon PM','0.000'],['othAM','Tue\u2013Fri AM','0.000'],
+     ['othPM','Tue\u2013Fri PM','0.000']].forEach(([k,label,ph],n)=>{
+      const f=el('div','field');
+      f.appendChild(el('label',null,label));
+      f.appendChild(numField(r[k],val=>{CFG.rates[i][k]=val;},
+                             {blankZero:k==='full', placeholder:ph}));
+      if(n===0) f.style.gridColumn='1 / -1';        // Full day spans the width
+      grid.appendChild(f);
+    });
+    card.appendChild(grid);
+    rc.appendChild(card);
   });
   const addR=el('button','btn ghost','+ Add leave type'); addR.style.marginTop='8px';
   addR.onclick=()=>{ CFG.rates.push({code:'',full:'',monAM:4.75,monPM:3.75,othAM:4.25,othPM:3.5}); openSettings(); };
