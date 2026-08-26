@@ -180,6 +180,9 @@ input[type=range]::-moz-range-track{height:6px;border-radius:99px;background:var
 input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;background:var(--ink);
   border:3px solid #fff;box-shadow:0 1px 5px rgba(20,26,36,.4)}
 input[type=range]:focus-visible{outline:2px solid var(--marigold);outline-offset:4px}
+textarea.csvbox{width:100%;font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--rule);border-radius:11px;padding:11px;
+  white-space:pre;overflow:auto;resize:vertical;-webkit-overflow-scrolling:touch}
 .pctwrap{display:flex;gap:12px;align-items:center}
 .pctwrap .sl{flex:1;min-width:0}
 .pctwrap .bx{flex:0 0 92px}
@@ -199,7 +202,7 @@ input[type=range]:focus-visible{outline:2px solid var(--marigold);outline-offset
 <div id="app">
   <div class="topbar">
     <button class="mbtn" id="prevM" aria-label="Previous month">‹</button>
-    <div class="mtitle"><b id="ymLabel">—</b><span id="ymSub">hours ledger</span></div>
+    <div class="mtitle" id="ymPick" role="button" tabindex="0" style="cursor:pointer"><b id="ymLabel">—</b><span id="ymSub">hours ledger</span></div>
     <button class="mbtn" id="nextM" aria-label="Next month">›</button>
     <button class="gear" id="openSettings" aria-label="Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
@@ -462,6 +465,40 @@ async function loadHistory(){
 /* ============================================================
    7. SCREENS
    ============================================================ */
+/** Month and year dropdowns, reusable wherever navigation is wanted. */
+function monthPicker(){
+  const wrap=el('div','inline');
+  const [cy,cm]=YM.split('-').map(Number);
+  const mf=el('div','field'); mf.style.marginBottom='0';
+  mf.appendChild(el('label',null,'Month'));
+  const ms=el('select');
+  MN.forEach((n,i)=>{ const o=el('option',null,n); o.value=i+1; if(i+1===cm) o.selected=true; ms.appendChild(o); });
+  mf.appendChild(ms);
+  const yf=el('div','field'); yf.style.marginBottom='0'; yf.style.flex='0 0 104px';
+  yf.appendChild(el('label',null,'Year'));
+  const ys=el('select');
+  const years=Object.keys(CFG.holidays).map(Number).sort((a,b)=>a-b);
+  if(!years.includes(cy)) years.push(cy);
+  years.sort((a,b)=>a-b).forEach(y=>{ const o=el('option',null,y); o.value=y; if(y===cy) o.selected=true; ys.appendChild(o); });
+  yf.appendChild(ys);
+  const go=()=>loadMonth(`${ys.value}-${String(ms.value).padStart(2,'0')}`);
+  ms.onchange=go; ys.onchange=go;
+  wrap.append(mf,yf);
+  return wrap;
+}
+function openMonthSheet(){
+  const sh=$('sheet'); sh.innerHTML='';
+  sh.appendChild(el('div','grab'));
+  sh.appendChild(el('h3',null,'Jump to a month'));
+  sh.appendChild(el('p','sh-sub','any month from '+Object.keys(CFG.holidays).sort()[0]+' onwards'));
+  const c=el('div','card'); c.appendChild(monthPicker()); sh.appendChild(c);
+  const now=el('button','btn ghost','This month');
+  now.onclick=()=>{ const n=new Date(); loadMonth(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`); closeSheet(); };
+  sh.appendChild(now);
+  const done=el('button','btn','Done'); done.onclick=closeSheet; sh.appendChild(done);
+  $('scrim').classList.add('on'); sh.classList.add('on');
+}
+
 function setTab(tab){ TAB=tab; [...$('tabs').children].forEach(b=>b.classList.toggle('on',b.dataset.tab===tab)); render(); $('screen').scrollTop=0; }
 function shiftMonth(n){ const [y,m]=YM.split('-').map(Number), d=new Date(y,m-1+n,1);
   loadMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
@@ -610,6 +647,8 @@ function scrHome(s,days,t){
 }
 
 function scrDays(s,days,t){
+  s.appendChild(el('p','eyebrow','Month'));
+  const pick=el('div','card'); pick.appendChild(monthPicker()); s.appendChild(pick);
   s.appendChild(el('p','eyebrow','Tap a day to record leave'));
   const card=el('div','card flush');
   days.forEach(day=>{
@@ -667,12 +706,13 @@ function openDay(key){
   ph.appendChild(seg0); sh.appendChild(ph);
 
   if(!day.isHol){
+    const chosenType=(M.days&&M.days[key]&&M.days[key].type)||day.type;
     const tc=el('div','card');
     tc.appendChild(el('h2',null,'Leave type'));
-    tc.appendChild(el('p','sub','each type has its own rates'));
+    tc.appendChild(el('p','sub','pick this first — each type has its own rates'));
     const seg1=el('div','seg c4');
     CFG.rates.filter(r=>r.code).forEach(r=>{
-      const b=el('button',day.type===r.code?'on':'',r.code);
+      const b=el('button',chosenType===r.code?'on':'',r.code);
       b.onclick=()=>{ setDay(key,'type',r.code); openDay(key); };
       seg1.appendChild(b);
     });
@@ -682,7 +722,7 @@ function openDay(key){
     sc.appendChild(el('h2',null,'Session'));
     sc.appendChild(el('p','sub','how much of the day was taken'));
     const seg2=el('div','seg c2');
-    const probe=k=>{ const d2={...day,session:k}; return leaveDeduction(d2); };
+    const probe=k=>leaveDeduction({...day,session:k,type:chosenType});
     [['','No leave',''],['Full','Full day',`−${f3(probe('Full'))} h`],
      ['AM','Half day AM',`−${f3(probe('AM'))} h`],['PM','Half day PM',`−${f3(probe('PM'))} h`]
     ].forEach(([v,l,d])=>{
@@ -711,10 +751,20 @@ function setDay(key,field,val,quiet){
   M.days=M.days||{};
   M.days[key]=M.days[key]||{};
   M.days[key][field]=val;
-  const d=M.days[key];
-  if(!d.session && !num(d.custom) && d.ph===undefined) delete M.days[key];
+  prune(key);
   queueSave();
   if(!quiet) render();
+}
+/** Drop a day record only when it carries nothing worth keeping.
+ *  A leave type on its own IS worth keeping — it lets you pick the type
+ *  before the session, in either order. */
+function prune(key){
+  const d=M.days[key];
+  if(!d) return;
+  if(d.session || num(d.custom) || d.ph!==undefined) return;
+  const dflt=(CFG.rates[0]&&CFG.rates[0].code)||'AL';
+  if(d.type && d.type!==dflt) return;          // a deliberate non-default choice
+  delete M.days[key];
 }
 
 function scrTasks(s,days,t){
@@ -843,18 +893,94 @@ function scrHist(s){
     dl.onclick=()=>{ if(confirm(`Remove ${labelYM(ym)} from history?`)) removeFromHistory(ym); };
     act.append(op,dl); c.appendChild(act); s.appendChild(c);
   });
-  const csv=el('button','btn ghost','Export history as CSV');
+  const csv=el('button','btn ghost','Export history');
   csv.onclick=exportCSV; s.appendChild(csv);
 }
-function exportCSV(){
-  const head=['Month','Work days','Base hours','Base x %','Leave h','Custom+adhoc h','Stretch h','Multiplier %','Target h','Completed h','Difference h','% of target'];
-  const rows=Object.keys(HIST).sort().map(ym=>{const s=HIST[ym];
-    return [labelYM(ym),s.workDays,f3(s.baseHours),f3(s.scaled||0),f3(s.leaveH),f3(s.customH||0),
-            f3(s.stretchH),s.mult??num(CFG.mult),f3(s.target),f3(s.completed),f3(s.diff),f3(s.pct)];});
-  const b=new Blob([[head,...rows].map(r=>r.join(',')).join('\n')],{type:'text/csv'});
-  const u=URL.createObjectURL(b), a=document.createElement('a');
-  a.href=u; a.download='hours-history.csv'; a.click(); URL.revokeObjectURL(u);
-  toast('CSV downloaded');
+/** Build the history CSV. Per-leave-type columns are added for whatever types appear. */
+function historyCSV(){
+  const keys=Object.keys(HIST).sort();
+  const types=[];
+  keys.forEach(ym=>Object.keys(HIST[ym].byType||{}).forEach(t=>{ if(!types.includes(t)) types.push(t); }));
+  types.sort();
+  const head=['Month','Work days','Base hours','Target %','Base x %','Leave h','Custom+adhoc h',
+              'Stretch h','Target h','Completed h','Difference h','% of target','Result',
+              ...types.map(t=>t+' h')];
+  const esc=v=>{ const t=String(v); return /[",\n]/.test(t) ? '"'+t.replace(/"/g,'""')+'"' : t; };
+  const rows=keys.map(ym=>{
+    const s=HIST[ym];
+    return [labelYM(ym), s.workDays, f3(s.baseHours), s.mult??num(CFG.mult), f3(s.scaled||0),
+            f3(s.leaveH), f3(s.customH||0), f3(s.stretchH), f3(s.target), f3(s.completed),
+            f3(s.diff), f3(s.pct), s.diff>=0?'met':'short',
+            ...types.map(t=>f3((s.byType||{})[t]||0))].map(esc);
+  });
+  return [head.map(esc),...rows].map(r=>r.join(',')).join('\r\n');
+}
+
+/** Export is offered three ways, because a single one cannot be relied on:
+ *  in-app browsers and sandboxed frames block downloads outright, and iOS
+ *  handles blob downloads inconsistently. Copy always works. */
+async function exportCSV(){
+  const keys=Object.keys(HIST);
+  if(!keys.length){ toast('Nothing to export — save a month first'); return; }
+  const csv=historyCSV();
+  const name=`hours-history-${new Date().toISOString().slice(0,10)}.csv`;
+  const sh=$('sheet'); sh.innerHTML='';
+  sh.appendChild(el('div','grab'));
+  sh.appendChild(el('h3',null,'Export history'));
+  sh.appendChild(el('p','sh-sub',`${keys.length} month${keys.length===1?'':'s'} · ${name}`));
+
+  const status=el('div','state stored'); status.style.display='none'; sh.appendChild(status);
+  const say=(msg,bad)=>{ status.className='state '+(bad?'unsaved':'stored');
+                         status.textContent=msg; status.style.display='block'; };
+
+  // Share sheet — the most reliable route on iOS, when the browser offers it
+  let file=null;
+  try{ file=new File([csv],name,{type:'text/csv'}); }catch(e){}
+  if(file && navigator.canShare && navigator.canShare({files:[file]})){
+    const b=el('button','btn','Share / Save to Files');
+    b.onclick=async()=>{
+      try{ await navigator.share({files:[file],title:'Hours history'}); say('Shared.'); }
+      catch(e){ if(e && e.name!=='AbortError') say('Share was blocked here — use Copy below.',true); }
+    };
+    sh.appendChild(b);
+  }
+
+  const dl=el('button','btn ghost','Download file');
+  dl.onclick=()=>{
+    try{
+      const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=name; a.rel='noopener';
+      document.body.appendChild(a);          // detached anchors are ignored by some browsers
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);   // revoking at once cancels the download
+      say('Download started. If nothing arrived, this browser blocks downloads — use Copy instead.');
+    }catch(e){ say('Download blocked here — use Copy below.',true); }
+  };
+  sh.appendChild(dl);
+
+  const cp=el('button','btn ghost','Copy to clipboard');
+  cp.onclick=async()=>{
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(csv); }
+      else { box.select(); document.execCommand('copy'); }
+      say('Copied. Paste into a spreadsheet and save as .csv');
+    }catch(e){
+      box.select(); say('Select the text below and copy it manually.',true);
+    }
+  };
+  sh.appendChild(cp);
+
+  sh.appendChild(el('p','eyebrow','Or copy the text directly'));
+  const box=el('textarea','csvbox'); box.value=csv; box.readOnly=true; box.rows=8;
+  box.onclick=()=>box.select();
+  sh.appendChild(box);
+
+  const done=el('button','btn ghost','Done'); done.style.marginTop='10px';
+  done.onclick=closeSheet; sh.appendChild(done);
+  $('scrim').classList.add('on'); sh.classList.add('on');
 }
 
 /* ============================================================
@@ -964,6 +1090,8 @@ function openSettings(){
 $('prevM').onclick=()=>shiftMonth(-1);
 $('nextM').onclick=()=>shiftMonth(1);
 $('openSettings').onclick=openSettings;
+$('ymPick').onclick=openMonthSheet;
+$('ymPick').onkeydown=e=>{ if(e.key==='Enter'||e.key===' ') openMonthSheet(); };
 $('scrim').onclick=closeSheet;
 [...$('tabs').children].forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
 

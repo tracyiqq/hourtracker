@@ -76,12 +76,20 @@ Use Duplicate for repeated identical rounds.
 Five tabs along the bottom:
 
 - **Target** — the headline figures and the save-to-history button
-- **Days** — tap any date to set leave type, session, or custom hours
+- **Days** — month and year dropdowns at the top; tap any date to set leave type, session or
+  custom hours
 - **Tasks** — one line per completed round
 - **Ledger** — the calculation line by line, with a copy-as-text button
-- **History** — months you have chosen to record, with CSV export
+- **History** — months you have chosen to record, with export
 
-Month navigation and Settings sit in the top bar.
+Settings sits in the top bar. Move between months with the arrows, the dropdowns on the Days
+tab, or by tapping the month name in the top bar for a picker with a "This month" shortcut.
+
+**Export** opens a sheet offering three routes: the iOS share sheet (save to Files), a file
+download, and copy to clipboard — with the raw CSV shown so it can always be copied by hand. More
+than one route is offered deliberately: in-app browsers and sandboxed frames block downloads
+outright, and iOS handles blob downloads inconsistently. The CSV carries a column per leave type
+and each month's own target percentage.
 
 **History is manual.** Each month keeps a *draft* that saves continuously as you type, and a
 *history record* written only when you press save. Editing a month you already saved does not
@@ -229,6 +237,8 @@ Claims worth trusting only because they were tested:
 | Leave rate combinations | 8 / 8, incl. MA PM 3.250 vs SL PM 3.500 on identical Tuesdays |
 | Legacy record migration | totals preserved exactly when rounds-with-quantity expand to one line each |
 | Target percentage override | 10 / 10 values from 60% to 130%, incl. decimals and blank fallback, match hand calculations |
+| Leave entry in either order | 7 / 7 — type-then-session and session-then-type give the same deduction, and abandoned selections leave no stray records |
+| CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Build reproducibility | `build_app.py` output byte-identical to the shipped file |
 
 Worked example — August 2026, no leave: base 164.000 → ×105% = 172.200 → −3.507 stretch =
@@ -243,7 +253,7 @@ Nothing leaves the device. No network calls, no analytics, no backend.
 
 Everything is stored in local browser storage under the `hoursledger:` prefix. Two consequences:
 
-- **Clearing browser data erases your history.** Export the CSV from the History tab periodically.
+- **Clearing browser data erases your history.** Export from the History tab periodically.
 - **Nothing syncs between devices.** Each browser keeps its own copy.
 
 ---
@@ -280,3 +290,6 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Three decimal places | stretch time no longer hides in rounding |
 | Red / dark green status | short vs met, on the target ring, ledger and history |
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
+| Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
+| Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Fixed: CSV export did nothing | the download anchor was never added to the page and its URL was revoked before the click landed; export now offers share, download and copy, and reports what actually happened |
