@@ -4,7 +4,7 @@ A single-file web app that works out how many hours you are required to deliver 
 — after Hong Kong public holidays, leave and stretch time — and tracks completed task rounds
 against that target.
 
-No build step to run it, no dependencies, no backend. Open `hours-ledger-app.html` in a browser.
+No build step to run it, no dependencies, no backend. Open `index.html` in a browser.
 
 ---
 
@@ -143,17 +143,21 @@ authoritative copy.
 ## Repository layout
 
 ```
+├── .gitignore
 ├── README.md
-├── hours-ledger-app.html       built app — 67 KB, single file, no dependencies
+├── CONTRIBUTING.md             how to build, test and change the rules safely
+├── index.html                  the app — 73 KB, single file, no dependencies
 └── src/
     ├── app_template.html       app source; holiday data injected at build time
-    ├── build_app.py            injects the holidays, validates, writes the built app
+    ├── build_app.py            injects the holidays, validates, writes index.html
     ├── hk_holidays.py          astronomical engine: derives HK holidays for any year
-    └── holidays_projected.py   generated output of the above, 2028–2046
+    ├── holidays_projected.py   generated output of the above, 2028–2046
+    └── test_holidays.py        seven checks, no dependencies
 ```
 
-The built app is committed deliberately — it is what a user opens, and it has no runtime
-dependency.
+`index.html` is generated but committed deliberately: it is what a user opens, it has no runtime
+dependency, and being at the repository root means any static host serves it without
+configuration. Never edit it by hand — the tests fail if it has drifted from the source.
 
 ---
 
@@ -163,7 +167,7 @@ Python 3.11+. No third-party packages.
 
 ```bash
 cd src && python build_app.py
-# hours-ledger-app.html  67 KB
+# ../index.html  73 KB
 # 408 holidays, 2023-2046  (85 gazetted, 323 projected)
 ```
 
@@ -187,6 +191,28 @@ python build_app.py
 ```
 
 `hk_holidays.py` has no dependencies either — the astronomy is implemented directly.
+
+---
+
+## Tests
+
+```bash
+cd src && python test_holidays.py
+```
+
+```
+PASS  algorithm reproduces all 85 gazetted dates (2023–2027)
+PASS  Lunar New Year matches 11 independently known years
+PASS  holiday table structure — 408 dates, 2023–2046, 17 per year, none on a Sunday
+PASS  tiers flagged correctly — 85 gazetted, 323 projected
+PASS  index.html matches a fresh build from source
+PASS  no network calls in the built app
+PASS  target arithmetic at 6 percentages (60%–120%)
+```
+
+Exits non-zero on failure, so it drops straight into a pre-commit hook or a CI job. The first
+check is the one that matters: if the algorithm stops reproducing the officially published dates,
+the 323 projected dates cannot be trusted either.
 
 ---
 
@@ -224,17 +250,22 @@ Everything is stored in local browser storage under the `hoursledger:` prefix. T
 
 ## Hosting
 
-The app is a single static file, so it runs from anywhere that serves a file. Getting a real Home
-Screen icon on iOS requires a URL: Safari → Share → Add to Home Screen only appears for hosted
-pages, not local files. The app already carries the meta tags to launch full-screen once hosted.
+The repository is deployment-ready: `index.html` sits at the root with no build step, no
+dependencies and no server-side anything, so any static host serves it as-is. Once it has a URL,
+Safari → Share → Add to Home Screen gives a full-screen icon — the meta tags for that are already
+in place.
 
-**Hosting must go through a company-managed environment.** Do not publish this to a personal
-GitHub Pages, Netlify or Vercel account, and do not register one with a work email address. Raise
-a request in `#cell_ai_native_working` or `#cell_security` with the service, purpose, data
-involved and target environment. It is a light ask — one static file, no backend, no secrets, no
-data leaving the device — but it goes through the same gate as anything else.
+**Turning hosting on has to go through a company-managed environment.** Do not publish this to a
+personal GitHub Pages, Netlify or Vercel account, and do not register one with a work email
+address. The approved routes are the company Cloudflare or Render enterprise setup, Apps Script
+on the company Workspace, or another environment already approved for the team.
 
-Until then: open the file from the Files app on iOS.
+Raise it in `#cell_ai_native_working` or `#cell_security`, stating the service, purpose, data
+involved, permissions needed and target environment. It is a light request — one static file, no
+backend, no secrets, no data leaving the device — but it goes through the same gate as anything
+else.
+
+Until it has a URL: open `index.html` from the Files app on iOS, or from wherever you keep it.
 
 ---
 
