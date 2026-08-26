@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Grace window | 11 / 11 cases — 1s to 1h away against every setting, plus never-unlocked, lock-disabled and Lock-now |
 | Lock re-entry | 6 / 6 routes re-lock — fresh load, page hidden, pagehide, bfcache restore, freeze, and open panels dismissed |
 | Security regressions | 5 checks in the suite — no network calls, no third-party origins, CSP present, all escape points wrapped, no plaintext passcode |
 | Build reproducibility | `build_app.py` output byte-identical to the shipped file |
@@ -286,15 +287,26 @@ a test asserts all five entry points stay wrapped.
 **Brute force made expensive.** Wrong passcodes cost escalating delays — 5s, 15s, 30s, 1m, 2m,
 5m — persisted, so reloading does not reset the penalty.
 
-**The passcode is asked for every time, by default.** The lock goes up the moment the page is
-hidden, not on a timer — so it is already waiting when you return, and the iOS app-switcher
-preview shows the lock rather than your timesheet.
+**A 10-minute grace window, by default.** Ducking out to another app and straight back does not
+cost a passcode. Beyond the window it is asked for again. Settings offers every time, 1, 5, 10 or
+30 minutes, or 2 hours, plus a **Lock now** button that ends the window immediately.
+
+The screen is still veiled the moment the page is hidden, so the iOS app-switcher preview shows
+the lock rather than your timesheet. Inside the grace window that veil simply lifts on return;
+beyond it, the passcode is required.
+
+Grace is judged by **comparing timestamps on return, never by a timer** — iOS suspends timers as
+soon as a page is backgrounded, so a countdown scheduled on hide never fires. A reload inside the
+window is also honoured, since the last-seen time is persisted.
 
 A reload is not the only way back into a page: iOS resumes a Home Screen app from memory, and
 Safari restores from the back/forward cache — in both cases without re-running startup. So
 `visibilitychange`, `pagehide`, `pageshow`, `freeze` and `resume` are each handled separately,
-because each is a distinct route in. Settings offers a 1- or 5-minute grace period if entering the
-code every time becomes tiresome, plus a **Lock now** button.
+because each is a distinct route in.
+
+The trade-off is honest: the last-seen timestamp lives in browser storage, so someone with device
+access could edit it to extend the window. Given the lock is a privacy curtain rather than
+encryption, that is not the weakest link.
 
 **No secret in the repository.** Only a salted SHA-256 hash of the passcode is stored or shipped.
 
@@ -377,6 +389,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| 10-minute grace window | brief app switches no longer ask for the passcode; grace measured by timestamp because iOS suspends background timers |
 | Fixed: repeated digits in the passcode triggered iOS zoom | two quick taps on one key read as a double-tap gesture; `touch-action` now disables it app-wide and the keypad fires on `pointerdown` |
 | Fixed: Tue–Fri PM rate was clipped in Settings | the six-column rate row left 54px for a figure needing 52px; each rate is now a labelled field in a per-type card |
 | Fixed: passcode was only asked once | resuming the page from memory or the back/forward cache skipped the lock entirely; every re-entry route now re-locks, immediately on hide |
