@@ -73,6 +73,18 @@ Use Duplicate for repeated identical rounds.
 
 ## Using it
 
+The page opens on a **passcode screen** — six digits on a keypad. The default is set; change it
+under Settings → Passcode, or switch the lock off there entirely.
+
+Be clear about what this is: **a privacy screen, not encryption.** Everything runs on the device,
+so the data is readable by anyone who can reach the browser's storage or read the page source. It
+stops a colleague picking up an unlocked phone; it would not stop anyone determined. There is no
+recovery if the passcode is forgotten — clearing site data resets it, and takes the history with
+it.
+
+Only a **salted SHA-256 hash** of the passcode is stored or committed. The passcode itself appears
+nowhere in this repository.
+
 Five tabs along the bottom:
 
 - **Target** — the headline figures and the save-to-history button
@@ -215,6 +227,10 @@ PASS  holiday table structure — 408 dates, 2023–2046, 17 per year, none on a
 PASS  tiers flagged correctly — 85 gazetted, 323 projected
 PASS  index.html matches a fresh build from source
 PASS  no network calls in the built app
+PASS  no third-party origins — the page loads nothing remote
+PASS  content security policy locked down (no connect, no objects, no external anything)
+PASS  editable text escaped at all 5 entry points
+PASS  no plaintext passcode in any committed file
 PASS  target arithmetic at 6 percentages (60%–120%)
 ```
 
@@ -239,11 +255,71 @@ Claims worth trusting only because they were tested:
 | Target percentage override | 10 / 10 values from 60% to 130%, incl. decimals and blank fallback, match hand calculations |
 | Leave entry in either order | 7 / 7 — type-then-session and session-then-type give the same deduction, and abandoned selections leave no stray records |
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
+| Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
+| XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Security regressions | 5 checks in the suite — no network calls, no third-party origins, CSP present, all escape points wrapped, no plaintext passcode |
 | Build reproducibility | `build_app.py` output byte-identical to the shipped file |
 
 Worked example — August 2026, no leave: base 164.000 → ×105% = 172.200 → −3.507 stretch =
 **168.693**. The same month at 110% gives **176.893**, at 100% gives **160.493**. March 2026 with
 mixed leave types: **139.498**.
+
+---
+
+## Security
+
+### What is actually defended
+
+**No third-party code or origins.** The page loads nothing remote — the webfonts were removed and
+replaced with system fonts specifically so there is no external dependency to be compromised. A
+test fails the build if any remote origin reappears.
+
+**A strict Content Security Policy.** `default-src 'none'` with `connect-src 'none'` is the
+important line: even if a script somehow ran, it has nowhere to send anything. Objects, frames,
+workers, external styles and scripts are all refused.
+
+**Injection closed off.** Leave type codes, holiday names and notes are all editable, so each was
+a route to inject markup into the page. Every one is escaped at the point it enters the DOM, and
+a test asserts all five entry points stay wrapped.
+
+**Brute force made expensive.** Wrong passcodes cost escalating delays — 5s, 15s, 30s, 1m, 2m,
+5m — persisted, so reloading does not reset the penalty.
+
+**Auto-relock.** Five minutes in the background and the passcode is asked for again. An unlocked
+phone left on a desk is the realistic threat this addresses.
+
+**No secret in the repository.** Only a salted SHA-256 hash of the passcode is stored or shipped.
+
+### What is not defended, and cannot be
+
+Be clear-eyed about this. The page runs entirely on your device, which means:
+
+- **The code is readable.** Anyone with the file can read the logic, including the hash and the
+  hashing method. A six-digit passcode falls to an offline brute force in seconds. The lock is a
+  privacy curtain against a passer-by, not a defence against an attacker with the file.
+- **The stored data is plaintext.** Anyone who can reach the browser's storage — device access,
+  developer tools — can read your timesheet regardless of the passcode. *Encrypting the stored
+  data with a key derived from the passcode is the one remaining change that would make the
+  passcode protect the data rather than just the screen. It carries a real cost: forget the
+  passcode and the data is unrecoverable.*
+- **If it is hosted, the passcode is not access control.** Anyone with the URL gets the page. Real
+  restriction has to come from the hosting platform's own authentication, which is a matter for
+  the hosting request, not this file.
+
+### Recommended headers
+
+A meta tag cannot set everything. Whoever hosts this should add:
+
+```
+Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=63072000
+Permissions-Policy: geolocation=(), camera=(), microphone=()
+```
+
+`frame-ancestors` and `X-Frame-Options` only work as real headers — in a meta tag they are ignored,
+so clickjacking protection depends on the host being configured.
 
 ---
 
@@ -253,7 +329,8 @@ Nothing leaves the device. No network calls, no analytics, no backend.
 
 Everything is stored in local browser storage under the `hoursledger:` prefix. Two consequences:
 
-- **Clearing browser data erases your history.** Export from the History tab periodically.
+- **Clearing browser data erases your history and resets the passcode.** Export from the History
+  tab periodically.
 - **Nothing syncs between devices.** Each browser keeps its own copy.
 
 ---
@@ -292,4 +369,6 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Security hardening | strict CSP, third-party fonts removed, all editable text escaped, brute-force backoff, auto-relock |
+| Passcode lock added | six-digit keypad on open; salted hash only, changeable or removable in Settings |
 | Fixed: CSV export did nothing | the download anchor was never added to the page and its URL was revoked before the click landed; export now offers share, download and copy, and reports what actually happened |

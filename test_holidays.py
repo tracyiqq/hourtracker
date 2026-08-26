@@ -96,16 +96,70 @@ def test_built_app_is_current():
 
 
 def test_app_has_no_network_calls():
-    """The app must stay self-contained apart from the webfont."""
+    """The app must stay entirely self-contained — no code paths that talk out."""
     built = HERE.parent / "index.html"
     if not built.exists():
         return
     html = built.read_text()
-    calls = re.findall(r'\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b', html)
+    calls = re.findall(r'\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts)\b', html)
     if calls:
         bad("no network calls", f"found {sorted(set(calls))}")
     else:
         ok("no network calls in the built app")
+
+
+def test_no_third_party_origins():
+    """A remote origin is a supply chain. There should be none."""
+    built = HERE.parent / "index.html"
+    if not built.exists():
+        return
+    origins = set(re.findall(r'https?://[A-Za-z0-9.\-]+', built.read_text()))
+    origins = {o for o in origins if 'www.w3.org' not in o}      # SVG namespace only
+    if origins:
+        bad("no third-party origins", f"{sorted(origins)}")
+    else:
+        ok("no third-party origins — the page loads nothing remote")
+
+
+def test_security_headers_present():
+    built = HERE.parent / "index.html"
+    if not built.exists():
+        return
+    html = built.read_text()
+    need = ["default-src 'none'", "connect-src 'none'", "object-src 'none'",
+            "base-uri 'none'", "form-action 'none'", 'name="referrer" content="no-referrer"']
+    missing = [n for n in need if n not in html]
+    if missing:
+        bad("security policy", f"missing {missing}")
+    else:
+        ok("content security policy locked down (no connect, no objects, no external anything)")
+
+
+def test_user_text_is_escaped():
+    """Editable fields must not reach innerHTML unescaped."""
+    src = (HERE / "app_template.html").read_text()
+    if "const esc=v=>" not in src:
+        bad("escaper present", "esc() missing")
+        return
+    # every editable string must be wrapped where it enters the DOM
+    required = ["esc(day.type)", "esc(h[1])", "esc(M.extraNote", "esc(day.holName", "esc(k)"]
+    missing = [r for r in required if r not in src]
+    # and these raw forms must not appear at all
+    forbidden = ["${day.type}", "${h[1]}", "${day.holName||'Public holiday'}", "${k}</div>"]
+    present = [f for f in forbidden if f in src]
+    if missing or present:
+        bad("user text escaped", f"missing {missing}, raw {present}")
+    else:
+        ok(f"editable text escaped at all {len(required)} entry points")
+
+
+def test_no_plaintext_passcode():
+    for f in [HERE.parent / "index.html", HERE / "app_template.html",
+              HERE.parent / "README.md", HERE.parent / "CONTRIBUTING.md"]:
+        if f.exists() and re.search(r'\b121102\b', f.read_text()):
+            bad("no plaintext passcode", f"found in {f.name}")
+            return
+    ok("no plaintext passcode in any committed file")
 
 
 def test_target_arithmetic():
@@ -125,7 +179,9 @@ if __name__ == "__main__":
     print("Hours Ledger — tests\n")
     for fn in [test_algorithm_reproduces_gazetted, test_lunar_new_year, test_table_structure,
                test_gazetted_flagged_correctly, test_built_app_is_current,
-               test_app_has_no_network_calls, test_target_arithmetic]:
+               test_app_has_no_network_calls, test_no_third_party_origins,
+               test_security_headers_present, test_user_text_is_escaped,
+               test_no_plaintext_passcode, test_target_arithmetic]:
         fn()
     print()
     if failures:
