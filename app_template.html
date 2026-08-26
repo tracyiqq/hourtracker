@@ -363,16 +363,39 @@ const DEFAULT_PASS_HASH = '4c09f7ec076ad2ca5259f4f5059a8fb0048e6d4e640fe5fb62920
 const PASS_LEN = 6;
 const passHash = code => sha256(PASS_SALT + String(code));
 
-let LOCK = {enabled:true, hash:DEFAULT_PASS_HASH};
-let UNLOCKED_AT = 0;
-const AUTO_LOCK_MS = 5*60*1000;      // relock after 5 minutes in the background
+let LOCK = {enabled:true, hash:DEFAULT_PASS_HASH, grace:0};
 const BACKOFF = [0,0,0,5,15,30,60,120,300];   // seconds of delay per wrong attempt
+let LOCKED = true;          // start locked; nothing is shown until the code is entered
+let unlocking = null;       // in-flight prompt, so two events cannot stack two keypads
+let graceTimer = null;
 
 function drawDots(n){
   const d=$('dots'); d.innerHTML='';
   for(let i=0;i<PASS_LEN;i++) d.appendChild(el('i', i<n?'on':''));
 }
 /** Resolves once the correct passcode is entered, or immediately if the lock is off. */
+/** Put the lock up. Called the moment the page is hidden, so the passcode is
+ *  already waiting when you come back — and so the iOS app-switcher preview
+ *  shows the lock rather than your timesheet. */
+function armLock(){
+  if(!LOCK.enabled) return;
+  LOCKED = true;
+  const lk=$('lock');
+  if(lk) lk.classList.remove('hide');
+  const sh=$('sheet'), sc=$('scrim'), st=$('settings');
+  if(sh) sh.classList.remove('on');
+  if(sc) sc.classList.remove('on');
+  if(st) st.classList.remove('on');
+}
+/** The single entry point: resolves only once the page may be shown. */
+function gate(){
+  if(!LOCK.enabled){ LOCKED=false; const lk=$('lock'); if(lk) lk.classList.add('hide'); return Promise.resolve(); }
+  if(!LOCKED) return Promise.resolve();
+  if(unlocking) return unlocking;
+  unlocking = unlock().then(()=>{ LOCKED=false; unlocking=null; });
+  return unlocking;
+}
+
 function unlock(){
   return new Promise(resolve=>{
     if(!LOCK.enabled){ $('lock').classList.add('hide'); resolve(); return; }
@@ -407,7 +430,6 @@ function unlock(){
     const check=async()=>{
       if(passHash(buf)===LOCK.hash){
         tries=0; LOCK.tries=0; LOCK.until=0; await sSet('lock',LOCK);
-        UNLOCKED_AT=Date.now();
         msg.textContent=''; 
         $('lock').classList.add('hide');
         resolve();
@@ -1264,6 +1286,21 @@ function openSettings(){
     await sSet('lock',LOCK); npi.value=''; openSettings(); toast('Passcode changed');
   };
   pc.appendChild(setBtn);
+  const gf=el('div','field'); gf.style.margin='12px 0 0';
+  gf.appendChild(el('label',null,'Ask for the passcode'));
+  const gsel=el('select');
+  gsel.innerHTML='<option value="0">Every time the page is opened</option>'
+    +'<option value="60">If away more than 1 minute</option>'
+    +'<option value="300">If away more than 5 minutes</option>';
+  gsel.value=String(Number(LOCK.grace)||0);
+  gsel.onchange=async()=>{ LOCK.grace=Number(gsel.value)||0; await sSet('lock',LOCK);
+    toast(LOCK.grace?`Grace period ${LOCK.grace}s`:'Passcode every time'); };
+  gf.appendChild(gsel); pc.appendChild(gf);
+
+  const lockNow=el('button','btn ghost','Lock now'); lockNow.style.marginTop='9px';
+  lockNow.onclick=()=>{ $('settings').classList.remove('on'); armLock(); gate().then(()=>render()); };
+  pc.appendChild(lockNow);
+
   const pn=el('p','sub'); pn.style.margin='10px 0 0';
   pn.textContent='A privacy screen, not encryption — the page runs on this device and the data is '
     +'readable by anyone who can reach the browser storage. There is no recovery if you forget it.';
@@ -1296,8 +1333,11 @@ $('scrim').onclick=closeSheet;
 
 (async function init(){
   const lk=await sGet('lock');
-  if(lk && typeof lk.enabled==='boolean'){ LOCK.enabled=lk.enabled; LOCK.hash=lk.hash||DEFAULT_PASS_HASH; }
-  await unlock();
+  if(lk && typeof lk.enabled==='boolean'){
+    LOCK.enabled=lk.enabled; LOCK.hash=lk.hash||DEFAULT_PASS_HASH;
+    LOCK.grace=Number(lk.grace)||0; LOCK.tries=lk.tries; LOCK.until=lk.until;
+  }
+  await gate();
   const saved=await sGet('config');
   if(saved){
     CFG=Object.assign(clone(DEFAULTS),saved);
@@ -1314,16 +1354,27 @@ $('scrim').onclick=closeSheet;
   const n=new Date();
   await loadMonth(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`);
 
-  // Relock after a spell in the background: an unlocked phone left on a desk
-  // is the threat this lock actually addresses.
-  document.addEventListener('visibilitychange', async ()=>{
-    if(document.visibilityState==='hidden'){ UNLOCKED_AT=UNLOCKED_AT||Date.now(); return; }
-    if(LOCK.enabled && UNLOCKED_AT && Date.now()-UNLOCKED_AT>AUTO_LOCK_MS){
-      closeSheet();
-      $('settings').classList.remove('on');
-      await unlock();
-      render();
-    }
+  /* Re-lock on every route back into the page.
+     A reload is not the only way in: iOS resumes a Home Screen app from memory
+     and Safari restores from the back/forward cache, in both cases without
+     re-running startup. Each of these events is a separate way back, so each
+     one has to be covered. */
+  const leaving = ()=>{
+    clearTimeout(graceTimer);
+    if(LOCK.grace>0) graceTimer=setTimeout(armLock, LOCK.grace*1000);
+    else armLock();
+  };
+  const returning = ()=>{ clearTimeout(graceTimer); gate().then(()=>render()); };
+
+  document.addEventListener('visibilitychange', ()=>{
+    document.visibilityState==='hidden' ? leaving() : returning();
   });
+  window.addEventListener('pagehide', leaving);            // navigating away, app suspending
+  window.addEventListener('pageshow', e=>{                 // includes back/forward cache restores
+    if(e.persisted) armLock();
+    returning();
+  });
+  window.addEventListener('freeze', armLock);              // browser discarding the tab
+  window.addEventListener('resume', returning);
 })();
 </script>

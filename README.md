@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Lock re-entry | 6 / 6 routes re-lock — fresh load, page hidden, pagehide, bfcache restore, freeze, and open panels dismissed |
 | Security regressions | 5 checks in the suite — no network calls, no third-party origins, CSP present, all escape points wrapped, no plaintext passcode |
 | Build reproducibility | `build_app.py` output byte-identical to the shipped file |
 
@@ -285,8 +286,15 @@ a test asserts all five entry points stay wrapped.
 **Brute force made expensive.** Wrong passcodes cost escalating delays — 5s, 15s, 30s, 1m, 2m,
 5m — persisted, so reloading does not reset the penalty.
 
-**Auto-relock.** Five minutes in the background and the passcode is asked for again. An unlocked
-phone left on a desk is the realistic threat this addresses.
+**The passcode is asked for every time, by default.** The lock goes up the moment the page is
+hidden, not on a timer — so it is already waiting when you return, and the iOS app-switcher
+preview shows the lock rather than your timesheet.
+
+A reload is not the only way back into a page: iOS resumes a Home Screen app from memory, and
+Safari restores from the back/forward cache — in both cases without re-running startup. So
+`visibilitychange`, `pagehide`, `pageshow`, `freeze` and `resume` are each handled separately,
+because each is a distinct route in. Settings offers a 1- or 5-minute grace period if entering the
+code every time becomes tiresome, plus a **Lock now** button.
 
 **No secret in the repository.** Only a salted SHA-256 hash of the passcode is stored or shipped.
 
@@ -369,6 +377,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Fixed: passcode was only asked once | resuming the page from memory or the back/forward cache skipped the lock entirely; every re-entry route now re-locks, immediately on hide |
 | Security hardening | strict CSP, third-party fonts removed, all editable text escaped, brute-force backoff, auto-relock |
 | Passcode lock added | six-digit keypad on open; salted hash only, changeable or removable in Settings |
 | Fixed: CSV export did nothing | the download anchor was never added to the page and its URL was revoked before the click landed; export now offers share, download and copy, and reports what actually happened |
