@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Draft vs record precedence | 6 / 6 — empty drafts never shadow a record, real unsaved work is never discarded, History open always wins, summary-only backups reported honestly |
 | Restored months open correctly | 9 / 9 — leave days, rounds, ad-hoc hours and the ledger all match the record after restoring over a stale draft, and a newer local copy is still protected |
 | Backup round-trip | export from one device, merge into a second holding a newer copy of one month — 2 added, newer local copy kept, draft carried, replace mode clears stale months, foreign files rejected |
 | Grace scope | 7 / 7 — background and reload forgiven, full close always asks, expiry at 10 min, Lock now immediate |
@@ -370,8 +371,14 @@ it can go straight to Files, iCloud Drive or your company Drive. Restore it on a
 or device from a file, or by pasting the text.
 
 Opening a month from History always shows **the saved record**, not any working draft — what you
-see is what is on record. A restored month replaces the local draft for that month, so it opens
-with its leave, tasks and ledger intact.
+see is what is on record. A restored month replaces the local draft for that month, and an empty
+draft can never shadow a saved record, so a restored month opens with its leave, tasks and ledger
+intact. Unsaved work in progress is still protected: a draft with real content in it wins over the
+saved copy unless you open the month from History deliberately.
+
+The restore result lists what the file actually contained — month by month, how many leave days
+and rounds — so a backup that holds only summaries is visible as such rather than looking like a
+failed restore.
 
 Restore has two modes:
 

@@ -697,9 +697,13 @@ async function loadMonth(ym, opts){
   SAVED=migrate(await sGet('month:'+ym));
   // Opening from History means "show me what is on record", so the saved copy
   // wins over any working draft — and becomes the draft, so edits continue from it.
-  const fromSaved = opts && opts.fromSaved && SAVED;
-  M = fromSaved ? clone(SAVED) : (draft||(SAVED?clone(SAVED):emptyRecord(ym)));
-  if(fromSaved) await sSet('draft:'+ym, M);
+  const hasContent = r => !!r && (Object.keys(r.days||{}).length>0 ||
+        (r.rounds||[]).some(x=>num(x.hours)>0) || num(r.extraHours)>0);
+  // A draft with nothing in it must never hide a saved record — that is what
+  // made a restored month open blank.
+  const useSaved = SAVED && ((opts && opts.fromSaved) || (!hasContent(draft) && hasContent(SAVED)));
+  M = useSaved ? clone(SAVED) : (draft||(SAVED?clone(SAVED):emptyRecord(ym)));
+  if(useSaved) await sSet('draft:'+ym, M);
   M.ym=ym;
   if(!M.rounds||!M.rounds.length) M.rounds=[{label:'',hours:''}];
   render();
@@ -801,6 +805,14 @@ function scrHome(s,days,t){
       <div><div class="k">Completed</div><div class="v">${f3(t.completed)}</div></div>
     </div>`));
 
+  const bodyEmpty = SAVED && !Object.keys(M.days||{}).length &&
+        !(M.rounds||[]).some(x=>num(x.hours)>0) && !num(M.extraHours);
+  if(bodyEmpty && SAVED.summary && (SAVED.summary.completed>0 || SAVED.summary.leaveH>0)){
+    const w=el('div','state unsaved');
+    w.textContent='This month is on record, but the saved copy carries no day or task detail — '
+      +'only its summary. Nothing was lost here; the backup it came from did not include the detail.';
+    s.appendChild(w);
+  }
   const changed = SAVED && contentKey(M)!==contentKey(SAVED);
   const st=el('div','state '+(!SAVED||changed?'unsaved':'stored')); st.id='hState';
   st.innerHTML = !SAVED
@@ -1158,7 +1170,8 @@ function scrHist(s){
         <div class="tail ${met?'met':'short'}" style="font-weight:600">${met?'+':'−'}${f3(Math.abs(h.diff))}</div>
       </div>`;
     const act=el('div','inline'); act.style.marginTop='12px';
-    const op=el('button','btn ghost','Open'); op.onclick=()=>{loadMonth(ym,{fromSaved:true});setTab('home');};
+    const op=el('button','btn ghost','Open');
+    op.onclick=async()=>{ await loadMonth(ym,{fromSaved:true}); setTab('home'); };
     const dl=el('button','btn danger','Remove');
     dl.onclick=()=>{ if(confirm(`Remove ${labelYM(ym)} from history?`)) removeFromHistory(ym); };
     act.append(op,dl); c.appendChild(act); s.appendChild(c);
@@ -1365,10 +1378,26 @@ function openBackupSheet(){
   });
   sh.appendChild(seg);
 
+  const describe=obj=>{
+    const ms=Object.entries(obj.months||{});
+    if(!ms.length) return 'This backup contains no saved months.';
+    const parts=ms.sort().map(([ym,r])=>{
+      const days=Object.keys((r&&r.days)||{}).length;
+      const rounds=((r&&r.rounds)||[]).filter(x=>num(x.hours)>0).length;
+      return `${labelYM(ym)}: ${days} leave day(s), ${rounds} round(s)`;
+    });
+    const thin=ms.filter(([,r])=>!r||(!Object.keys(r.days||{}).length &&
+                 !((r.rounds||[]).some(x=>num(x.hours)>0)))).length;
+    return parts.join('\n') + (thin ? `\n\n${thin} month(s) carry only a summary — the backup itself has no day or task detail for them.` : '');
+  };
   const doRestore=async(text)=>{
+    let obj;
+    try{ obj=JSON.parse(text); }catch(e){ say('That is not valid JSON.',true); return; }
     try{
-      const res=await restoreBackup(JSON.parse(text), mode);
-      say(`Restored: ${res.added} month(s) added, ${res.updated} updated, ${res.kept} already newer here.`);
+      const before=describe(obj);
+      const res=await restoreBackup(obj, mode);
+      say(`Restored: ${res.added} added, ${res.updated} updated, ${res.kept} already newer here.\n\n${before}`);
+      status.style.whiteSpace='pre-wrap';
       render();
     }catch(e){ say(e.message||'Could not read that backup.',true); }
   };
