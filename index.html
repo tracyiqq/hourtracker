@@ -1135,6 +1135,8 @@ function scrHist(s){
   if(!keys.length){
     s.appendChild(el('div','empty',`<svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
       <p>No months saved yet.<br>Finish a month, check the ledger,<br>then save it to the record.</p>`));
+    const bk0=el('button','btn ghost','Restore from a backup');
+    bk0.onclick=openBackupSheet; s.appendChild(bk0);
     return;
   }
   s.appendChild(el('p','eyebrow',`${keys.length} month${keys.length===1?'':'s'} on record`));
@@ -1157,8 +1159,10 @@ function scrHist(s){
     dl.onclick=()=>{ if(confirm(`Remove ${labelYM(ym)} from history?`)) removeFromHistory(ym); };
     act.append(op,dl); c.appendChild(act); s.appendChild(c);
   });
-  const csv=el('button','btn ghost','Export history');
+  const csv=el('button','btn ghost','Export history as CSV');
   csv.onclick=exportCSV; s.appendChild(csv);
+  const bk=el('button','btn','Backup & restore');
+  bk.onclick=openBackupSheet; s.appendChild(bk);
 }
 /** Build the history CSV. Per-leave-type columns are added for whatever types appear. */
 function historyCSV(){
@@ -1241,6 +1245,151 @@ async function exportCSV(){
   const box=el('textarea','csvbox'); box.value=csv; box.readOnly=true; box.rows=8;
   box.onclick=()=>box.select();
   sh.appendChild(box);
+
+  const done=el('button','btn ghost','Done'); done.style.marginTop='10px';
+  done.onclick=closeSheet; sh.appendChild(done);
+  $('scrim').classList.add('on'); sh.classList.add('on');
+}
+
+/* ============================================================
+   7b. BACKUP AND RESTORE
+   Browser storage is scoped to one browser on one device. Nothing
+   in a static page can cross that boundary, so the answer is a file
+   you carry: export it to iCloud/Drive, restore it anywhere.
+   ============================================================ */
+async function buildBackup(){
+  const months={}, drafts={};
+  for(const k of await sList('month:')) months[k.replace('month:','')]=await sGet(k);
+  for(const k of await sList('draft:')) drafts[k.replace('draft:','')]=await sGet(k);
+  return {app:'hours-ledger', schema:1, exportedAt:new Date().toISOString(),
+          config:CFG,
+          lock:{enabled:LOCK.enabled, hash:LOCK.hash, grace:LOCK.grace, graceSet:LOCK.graceSet},
+          months, drafts};
+}
+/** mode 'merge' keeps whichever copy of a month was saved later; 'replace'
+ *  wipes what is here first. Merge is the safe default. */
+async function restoreBackup(obj, mode){
+  if(!obj || obj.app!=='hours-ledger') throw new Error('That is not a Hours Ledger backup file');
+  if(mode==='replace'){
+    for(const k of await sList('month:')) await sDel(k);
+    for(const k of await sList('draft:')) await sDel(k);
+  }
+  let added=0, updated=0, kept=0;
+  for(const [ym,rec] of Object.entries(obj.months||{})){
+    if(!rec || !rec.summary) continue;
+    const cur=await sGet('month:'+ym);
+    if(!cur){ await sSet('month:'+ym,rec); added++; }
+    else if(mode==='replace' || String(rec.savedAt||'')>String(cur.savedAt||'')){
+      await sSet('month:'+ym,rec); updated++;
+    } else kept++;
+  }
+  for(const [ym,rec] of Object.entries(obj.drafts||{})){
+    if(!rec) continue;
+    if(mode==='replace' || !(await sGet('draft:'+ym))) await sSet('draft:'+ym,rec);
+  }
+  if(obj.config){ CFG=Object.assign(clone(DEFAULTS), obj.config); await sSet('config',CFG); }
+  if(obj.lock && obj.lock.hash){
+    LOCK.enabled=obj.lock.enabled!==false; LOCK.hash=obj.lock.hash;
+    LOCK.grace=Number(obj.lock.grace)||GRACE_DEFAULT; LOCK.graceSet=!!obj.lock.graceSet;
+    await sSet('lock',LOCK);
+  }
+  await loadHistory();
+  await loadMonth(YM);
+  return {added,updated,kept};
+}
+
+function openBackupSheet(){
+  const sh=$('sheet'); sh.innerHTML='';
+  sh.appendChild(el('div','grab'));
+  sh.appendChild(el('h3',null,'Backup & restore'));
+  sh.appendChild(el('p','sh-sub','carry your history between browsers and devices'));
+
+  const status=el('div','state stored'); status.style.display='none'; sh.appendChild(status);
+  const say=(m,bad)=>{ status.className='state '+(bad?'unsaved':'stored');
+                       status.textContent=m; status.style.display='block'; };
+
+  const why=el('p','sub');
+  why.style.margin='0 0 14px';
+  why.textContent='Saved months live in this browser only. Another browser, another device or '
+    +'cleared site data starts empty. Export a backup and restore it there.';
+  sh.appendChild(why);
+
+  const exp=el('button','btn','Export backup file');
+  exp.onclick=async()=>{
+    const data=JSON.stringify(await buildBackup(),null,1);
+    const name=`hours-ledger-backup-${new Date().toISOString().slice(0,10)}.json`;
+    let file=null;
+    try{ file=new File([data],name,{type:'application/json'}); }catch(e){}
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:'Hours Ledger backup'});
+           say('Shared. Save it to Files, iCloud Drive or your company Drive.'); return; }
+      catch(e){ if(e && e.name==='AbortError') return; }
+    }
+    try{
+      const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+      const a=document.createElement('a'); a.href=url; a.download=name; a.rel='noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),4000);
+      say('Download started. If nothing arrived, copy the text below instead.');
+    }catch(e){ say('Download blocked here — copy the text below.',true); }
+  };
+  sh.appendChild(exp);
+
+  const cp=el('button','btn ghost','Copy backup text');
+  cp.onclick=async()=>{
+    const data=JSON.stringify(await buildBackup());
+    try{ await navigator.clipboard.writeText(data); say('Copied. Paste it into the box on the other device.'); }
+    catch(e){ box.value=data; box.select(); say('Select the text below and copy it.',true); }
+  };
+  sh.appendChild(cp);
+
+  sh.appendChild(el('p','eyebrow','Restore'));
+  let mode='merge';
+  const seg=el('div','seg c2');
+  [['merge','Merge','keeps the newer copy'],['replace','Replace','wipes what is here']].forEach(([v,l,d])=>{
+    const b=el('button',mode===v?'on':'',`${l}<small>${d}</small>`);
+    b.onclick=()=>{ mode=v; [...seg.children].forEach(c=>c.classList.remove('on')); b.classList.add('on'); };
+    seg.appendChild(b);
+  });
+  sh.appendChild(seg);
+
+  const doRestore=async(text)=>{
+    try{
+      const res=await restoreBackup(JSON.parse(text), mode);
+      say(`Restored: ${res.added} month(s) added, ${res.updated} updated, ${res.kept} already newer here.`);
+      render();
+    }catch(e){ say(e.message||'Could not read that backup.',true); }
+  };
+
+  const pick=el('button','btn ghost','Choose a backup file');
+  pick.style.marginTop='9px';
+  pick.onclick=()=>{
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='application/json,.json';
+    inp.onchange=()=>{
+      const f=inp.files && inp.files[0];
+      if(!f) return;
+      const r=new FileReader();
+      r.onload=()=>doRestore(String(r.result));
+      r.onerror=()=>say('Could not read that file.',true);
+      r.readAsText(f);
+    };
+    inp.click();
+  };
+  sh.appendChild(pick);
+
+  sh.appendChild(el('p','eyebrow','Or paste backup text'));
+  const box=el('textarea','csvbox'); box.rows=6; box.placeholder='{"app":"hours-ledger", ...}';
+  sh.appendChild(box);
+  const past=el('button','btn ghost','Restore from pasted text');
+  past.style.marginTop='9px';
+  past.onclick=()=>{ if(!box.value.trim()){ say('Paste a backup first.',true); return; } doRestore(box.value); };
+  sh.appendChild(past);
+
+  const note=el('p','sub'); note.style.margin='14px 0 0';
+  note.textContent='The backup holds your leave, tasks, settings and the passcode hash in readable '
+    +'text. Keep it somewhere you would keep a timesheet.';
+  sh.appendChild(note);
 
   const done=el('button','btn ghost','Done'); done.style.marginTop='10px';
   done.onclick=closeSheet; sh.appendChild(done);

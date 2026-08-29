@@ -92,7 +92,7 @@ Five tabs along the bottom:
   custom hours
 - **Tasks** — one line per completed round
 - **Ledger** — the calculation line by line, with a copy-as-text button
-- **History** — months you have chosen to record, with export
+- **History** — months you have chosen to record, with CSV export and backup/restore
 
 Settings sits in the top bar. Move between months with the arrows, the dropdowns on the Days
 tab, or by tapping the month name in the top bar for a picker with a "This month" shortcut.
@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Backup round-trip | export from one device, merge into a second holding a newer copy of one month — 2 added, newer local copy kept, draft carried, replace mode clears stale months, foreign files rejected |
 | Grace scope | 7 / 7 — background and reload forgiven, full close always asks, expiry at 10 min, Lock now immediate |
 | Grace migration and durability | 11 / 11 — stale settings overridden, deliberate choices respected, resume-from-memory and reload paths both covered |
 | Grace window | 11 / 11 cases — 1s to 1h away against every setting, plus never-unlocked, lock-disabled and Lock-now |
@@ -354,11 +355,30 @@ so clickjacking protection depends on the host being configured.
 
 Nothing leaves the device. No network calls, no analytics, no backend.
 
-Everything is stored in local browser storage under the `hoursledger:` prefix. Two consequences:
+Everything is stored in local browser storage under the `hoursledger:` prefix. That storage is
+scoped to **one browser on one device**: open the page in a different browser, on a different
+device, or after clearing site data, and it starts empty. No static page can cross that boundary —
+sharing state between devices needs a server holding your data, which this deliberately does not
+have.
 
-- **Clearing browser data erases your history and resets the passcode.** Export from the History
-  tab periodically.
-- **Nothing syncs between devices.** Each browser keeps its own copy.
+### Carrying your history
+
+**History → Backup & restore** exports everything — saved months, drafts, rates, holidays,
+settings and the passcode hash — as a single JSON file. On iOS, Export offers the share sheet, so
+it can go straight to Files, iCloud Drive or your company Drive. Restore it on any other browser
+or device from a file, or by pasting the text.
+
+Restore has two modes:
+
+- **Merge** (default) — for each month, the copy saved later wins. Safe to run repeatedly, and
+  safe when both sides have been used.
+- **Replace** — clears what is here first. For setting up a fresh device from a known-good backup.
+
+A practical routine: back up at the end of each month, once you have saved that month to history,
+and keep the file wherever you keep other work documents. That file is also your protection
+against clearing browser data, which erases the history and resets the passcode.
+
+The backup contains your timesheet in readable text. Treat it as you would any timesheet.
 
 ---
 
@@ -406,6 +426,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Backup & restore | history is portable between browsers and devices as a JSON file, with merge or replace |
 | Fixed: grey bar below the interface on iPhone | the phone-frame preview capped the app at 880px, shorter than a Pro Max viewport (932px). Full-bleed is now the default; the frame is confined to pointer devices; the page backdrop matches the tab bar and the home-indicator inset is painted explicitly |
 | Closing the app always requires the passcode | the grace window is session-scoped, so a suspend or reload is forgiven but a close is not |
 | Fixed: grace window had no effect on existing installs | the old build persisted `grace: 0`, which was then read back as a deliberate choice; a stored value now only counts if it was chosen in Settings |
