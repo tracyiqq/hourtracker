@@ -691,11 +691,15 @@ function contentKey(rec){
     extraNote:rec.extraNote||'', mult:String(rec.mult??''),
     rounds:(rec.rounds||[]).map(r=>[r.label||'',String(r.hours??'')])});
 }
-async function loadMonth(ym){
+async function loadMonth(ym, opts){
   YM=ym;
   const draft=migrate(await sGet('draft:'+ym));
   SAVED=migrate(await sGet('month:'+ym));
-  M=draft||(SAVED?clone(SAVED):emptyRecord(ym));
+  // Opening from History means "show me what is on record", so the saved copy
+  // wins over any working draft — and becomes the draft, so edits continue from it.
+  const fromSaved = opts && opts.fromSaved && SAVED;
+  M = fromSaved ? clone(SAVED) : (draft||(SAVED?clone(SAVED):emptyRecord(ym)));
+  if(fromSaved) await sSet('draft:'+ym, M);
   M.ym=ym;
   if(!M.rounds||!M.rounds.length) M.rounds=[{label:'',hours:''}];
   render();
@@ -1154,7 +1158,7 @@ function scrHist(s){
         <div class="tail ${met?'met':'short'}" style="font-weight:600">${met?'+':'−'}${f3(Math.abs(h.diff))}</div>
       </div>`;
     const act=el('div','inline'); act.style.marginTop='12px';
-    const op=el('button','btn ghost','Open'); op.onclick=()=>{loadMonth(ym);setTab('home');};
+    const op=el('button','btn ghost','Open'); op.onclick=()=>{loadMonth(ym,{fromSaved:true});setTab('home');};
     const dl=el('button','btn danger','Remove');
     dl.onclick=()=>{ if(confirm(`Remove ${labelYM(ym)} from history?`)) removeFromHistory(ym); };
     act.append(op,dl); c.appendChild(act); s.appendChild(c);
@@ -1275,16 +1279,24 @@ async function restoreBackup(obj, mode){
     for(const k of await sList('draft:')) await sDel(k);
   }
   let added=0, updated=0, kept=0;
+  const took=[];                       // months this restore actually brought in
   for(const [ym,rec] of Object.entries(obj.months||{})){
     if(!rec || !rec.summary) continue;
     const cur=await sGet('month:'+ym);
-    if(!cur){ await sSet('month:'+ym,rec); added++; }
+    if(!cur){ await sSet('month:'+ym,rec); added++; took.push(ym); }
     else if(mode==='replace' || String(rec.savedAt||'')>String(cur.savedAt||'')){
-      await sSet('month:'+ym,rec); updated++;
+      await sSet('month:'+ym,rec); updated++; took.push(ym);
     } else kept++;
   }
+  // Point each restored month's draft at the restored content. Without this an
+  // older local draft would shadow it and the month would open looking empty.
+  for(const ym of took){
+    const rec=obj.months[ym];
+    const incoming=(obj.drafts||{})[ym];
+    await sSet('draft:'+ym, incoming || clone(rec));
+  }
   for(const [ym,rec] of Object.entries(obj.drafts||{})){
-    if(!rec) continue;
+    if(!rec || took.includes(ym)) continue;
     if(mode==='replace' || !(await sGet('draft:'+ym))) await sSet('draft:'+ym,rec);
   }
   if(obj.config){ CFG=Object.assign(clone(DEFAULTS), obj.config); await sSet('config',CFG); }

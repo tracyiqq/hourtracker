@@ -257,6 +257,7 @@ Claims worth trusting only because they were tested:
 | CSV output | well-formed across 3 sample months — CRLF endings, consistent column count, quoted values, per-type columns, per-month target % |
 | Passcode hashing | embedded SHA-256 matches Python's `hashlib` on 5 vectors; correct code accepted, 7 near-misses rejected, salted so the bare hash does not match |
 | XSS escaping | 4 real payloads neutralised (`<img onerror>`, `</div><script>`, attribute break-out, quote injection) |
+| Restored months open correctly | 9 / 9 — leave days, rounds, ad-hoc hours and the ledger all match the record after restoring over a stale draft, and a newer local copy is still protected |
 | Backup round-trip | export from one device, merge into a second holding a newer copy of one month — 2 added, newer local copy kept, draft carried, replace mode clears stale months, foreign files rejected |
 | Grace scope | 7 / 7 — background and reload forgiven, full close always asks, expiry at 10 min, Lock now immediate |
 | Grace migration and durability | 11 / 11 — stale settings overridden, deliberate choices respected, resume-from-memory and reload paths both covered |
@@ -368,6 +369,10 @@ settings and the passcode hash — as a single JSON file. On iOS, Export offers 
 it can go straight to Files, iCloud Drive or your company Drive. Restore it on any other browser
 or device from a file, or by pasting the text.
 
+Opening a month from History always shows **the saved record**, not any working draft — what you
+see is what is on record. A restored month replaces the local draft for that month, so it opens
+with its leave, tasks and ledger intact.
+
 Restore has two modes:
 
 - **Merge** (default) — for each month, the copy saved later wins. Safe to run repeatedly, and
@@ -426,6 +431,7 @@ Until it has a URL: open `index.html` from the Files app on iOS, or from whereve
 | Holidays extended to 2046 | 85 gazetted + 323 projected |
 | Fixed: leave type chosen before a session was discarded | picking SL or MA first silently reverted to AL; either order now works |
 | Month and year dropdowns | on the Days tab and behind the month name in the top bar |
+| Fixed: a restored month opened empty | an idle local draft shadowed the restored record; restore now repoints the draft, and History opens the saved copy |
 | Backup & restore | history is portable between browsers and devices as a JSON file, with merge or replace |
 | Fixed: grey bar below the interface on iPhone | the phone-frame preview capped the app at 880px, shorter than a Pro Max viewport (932px). Full-bleed is now the default; the frame is confined to pointer devices; the page backdrop matches the tab bar and the home-indicator inset is painted explicitly |
 | Closing the app always requires the passcode | the grace window is session-scoped, so a suspend or reload is forgiven but a close is not |
